@@ -107,13 +107,25 @@ detect_cloud_provider() {
 # Git prompt
 # --------------------------------------------------
 git_prompt_info() {
-  local repo branch top
+  local repo branch top is_dirty=0 is_ahead=0
   top=$(git rev-parse --show-toplevel 2>/dev/null) || return
   repo=${top##*/}
   branch=$(git symbolic-ref --short HEAD 2>/dev/null)
   [[ -z "$branch" ]] && branch="detached"
 
-  if [[ -n $(git status --porcelain --untracked-files=no 2>/dev/null) ]]; then
+  # Dirty working tree (include untracked files)
+  if [[ -n $(git status --porcelain 2>/dev/null) ]]; then
+    is_dirty=1
+  fi
+
+  # Ahead of upstream means commits not pushed yet
+  if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+    if (( $(git rev-list --count '@{u}..HEAD' 2>/dev/null) > 0 )); then
+      is_ahead=1
+    fi
+  fi
+
+  if (( is_dirty == 1 || is_ahead == 1 )); then
     echo "%F{227}${repo}:${branch}%f"
   else
     echo "%F{114}${repo}:${branch}%f"

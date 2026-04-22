@@ -22,6 +22,16 @@ plugins=(
 
 source $ZSH/oh-my-zsh.sh
 
+# ---------- Key behavior ----------
+# Tab: always do normal zsh completion (paths/commands)
+bindkey '^I' expand-or-complete
+
+# End: accept autosuggestion (history/completion suggestion)
+if (( $+widgets[autosuggest-accept] )); then
+  bindkey '^[[F' autosuggest-accept
+  bindkey '^[[4~' autosuggest-accept
+fi
+
 # ---------- History (PRO) ----------
 
 HISTSIZE=10000          # Quantidade de comandos mantidos em memória (sessão atual)
@@ -130,17 +140,6 @@ alias tg='terragrunt'
 eval "$(dircolors -b)"
 LS_COLORS="${LS_COLORS}ow=93:"
 export LS_COLORS
-
-# ---------- Autosuggestions: Tab aceita sugestão, senão faz completion ----------
-_tab_or_autosuggest() {
-  if [[ -n "$POSTDISPLAY" ]]; then
-    zle autosuggest-accept
-  else
-    zle expand-or-complete
-  fi
-}
-zle -N _tab_or_autosuggest
-bindkey '\t' _tab_or_autosuggest
 
 ## FUNCTIONS ****************************************************************** ##
 
