@@ -1,0 +1,364 @@
+#--------------------------	
+####  ZSH Setup
+#--------------------------
+
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="gnzh"
+
+plugins=(
+  ansible
+  argocd
+  aws
+  azure
+  docker
+  git
+  helm
+  kube-ps1
+  kubectl
+  terraform
+  zsh-autosuggestions
+  zsh-syntax-highlighting
+)
+
+source $ZSH/oh-my-zsh.sh
+
+# ---------- History (PRO) ----------
+
+HISTSIZE=10000          # Quantidade de comandos mantidos em memória (sessão atual)
+SAVEHIST=10000          # Quantidade de comandos salvos no arquivo de histórico
+HISTFILE=~/.zsh_history # Arquivo onde o histórico é persistido
+HIST_STAMPS="%F %T"     # Formato de data/hora → YYYY-MM-DD HH:MM:SS
+
+setopt SHARE_HISTORY        # Compartilha histórico entre múltiplos terminais abertos
+setopt INC_APPEND_HISTORY   # Salva comandos no histórico imediatamente (tempo real)
+setopt HIST_IGNORE_ALL_DUPS # Remove comandos duplicados (mantém só o mais recente)
+setopt HIST_REDUCE_BLANKS   # Remove espaços extras desnecessários nos comandos
+setopt HIST_IGNORE_SPACE    # Não salva comandos que começam com espaço (bom pra dados sensíveis)
+
+# ---------- Quality of Life ----------
+setopt AUTO_CD           # Permite navegar para diretórios sem precisar digitar "cd"
+ENABLE_CORRECTION="true" # Ativa correção automática de comandos digitados incorretamente
+
+# ---------- FZF Integration (optional) ----------
+if [ -f ~/.fzf.zsh ]; then
+  source ~/.fzf.zsh
+fi
+
+#--------------------------	
+####  Kubernetes
+#--------------------------
+
+# ---------- PATH & Basics ----------
+export KUBE_EDITOR="code --wait"
+
+# ---------- Kubernetes Core ----------
+alias k='kubectl'
+alias kx='kubectx'
+alias ks='kubens'
+
+# ---------- GET Commands ----------
+alias kg='kubectl get'
+alias kgp='kubectl get pods'
+alias kgpw='kubectl get pods -o wide'
+alias kgpy='kubectl get pods -o yaml'
+alias kgd='kubectl get deployment'
+alias kgdy='kubectl get deployment -o yaml'
+alias kgs='kubectl get svc'
+alias kgsy='kubectl get svc -o yaml'
+alias kgi='kubectl get ingress'
+alias kgns='kubectl get ns'
+alias kga='kubectl get all'
+alias kgaa='kubectl get all --all-namespaces'
+alias kgpa='kubectl get pods --all-namespaces'
+alias kge='kubectl get events --field-selector type=Warning --sort-by=.metadata.creationTimestamp'
+
+# ---------- Logs ----------
+alias klf='kubectl logs -f'
+alias klt='kubectl logs --tail=100'
+
+# ---------- Exec ----------
+alias keti='kubectl exec -ti'
+alias ksh='kubectl exec -it -- /bin/sh'
+alias kbash='kubectl exec -it -- /bin/bash'
+
+# ---------- Create ----------
+alias kc='kubectl create'
+alias kcns='kubectl create namespace'
+
+# ---------- Describe ----------
+alias kd='kubectl describe'
+alias kdp='kubectl describe pod'
+alias kdd='kubectl describe deployment'
+alias kds='kubectl describe svc'
+alias kdi='kubectl describe ingress'
+alias kdnd='kubectl describe node'
+
+# ---------- Delete ----------
+alias kdelp='kubectl delete pod'
+alias kdelpf='kubectl delete pod --force --grace-period=0'
+alias kdeld='kubectl delete deployment'
+alias kdels='kubectl delete svc'
+alias kdeli='kubectl delete ingress'
+alias kdelf='kubectl delete -f'
+
+# ---------- Apply / Diff ----------
+alias kaf='kubectl apply -f'
+alias kdf='kubectl diff -f'
+
+# ---------- Rollout ----------
+alias kdr='kubectl rollout restart deployment'
+alias kdsr='kubectl rollout status deployment'
+
+# ---------- Scale ----------
+alias ksd='kubectl scale deployment'
+
+# ---------- Node ----------
+alias kgnd='kubectl get nodes'
+
+# ---------- Metrics ----------
+alias ktp='kubectl top pods'
+alias ktnd='kubectl top nodes'
+
+#--------------------------	
+####  Terraform
+#--------------------------
+
+alias tf='terraform'
+alias tg='terragrunt'
+
+# ---------- LS_COLORS: world-writable dirs sem fundo verde ----------
+eval "$(dircolors -b)"
+LS_COLORS="${LS_COLORS}ow=93:"
+export LS_COLORS
+
+# ---------- Autosuggestions: Tab aceita sugestão, senão faz completion ----------
+_tab_or_autosuggest() {
+  if [[ -n "$POSTDISPLAY" ]]; then
+    zle autosuggest-accept
+  else
+    zle expand-or-complete
+  fi
+}
+zle -N _tab_or_autosuggest
+bindkey '\t' _tab_or_autosuggest
+
+## FUNCTIONS ****************************************************************** ##
+
+function push () {
+ git add . && git commit -a -m marcelo && git push
+}
+
+function ns () {
+  kubectl config set-context --current --namespace=$1
+}
+
+function uc () {
+ kubectl config use-context $1
+}
+
+function dec () {
+  echo $1 | base64 -d
+  echo
+}
+
+function bkp () {
+   cp /home/marcelo/snap/freemind/current/*.mm  /data/ssd_main/bkp/freemind -f
+   cp /etc/hosts /data/ssd_main/bkp/hosts
+   cp ~/.bashrc /data/ssd_main/bkp/bash
+   cp ~/.config/cairo-dock /data/ssd_main/bkp -r
+}
+
+function hosts () {
+   sudo vim /etc/hosts
+}
+
+function hosts-cp () {
+   scp /etc/hosts root@cerebros:/etc/hosts
+   scp /etc/hosts root@optimus:/etc/hosts
+   scp /etc/hosts root@prime:/etc/hosts
+   scp /etc/hosts root@bumblebee:/etc/hosts
+   scp /etc/hosts root@megatron:/etc/hosts
+   scp /etc/hosts root@galvatron:/etc/hosts
+   scp /etc/hosts root@fallen:/etc/hosts
+}
+
+function dns () {
+  #export name=`aws route53 list-hosted-zones | grep -i 'name' | cut -d. -f1 | tr 'Name' , | cut -d: -f2 | tr -d '"'`
+  export name=`aws route53 list-hosted-zones | grep -i 'name' | cut -d. -f1 | tr 'Name' , | cut -d: -f2`
+  sed -i -e "s%default = .*realhandsonlabs.net%default =$name.realhandsonlabs.net%" /github/aws/sap-c02v2/variables.tf
+  echo $name
+}
+
+function state () {
+   rm terraform.tfstate terraform.tfstate.backup -f
+}
+
+function apply () {
+   terraform apply --auto-approve
+}
+
+function destroy () {
+	terraform destroy --auto-approve
+}
+
+function plan () {
+   terraform plan
+}
+
+function val () {
+  terraform validate
+}
+
+function list () {
+  terraform state list
+}
+
+function myip () {
+  curl icanhazip.com -4
+}
+
+function aws1 () {
+  ssh ec2-user@aws1
+}
+
+function aws2 () {
+  ssh ec2-user@aws2
+}
+
+function optimus () {
+  ssh root@optimus
+}
+
+function prime () {
+  ssh root@prime
+}
+
+function bumblebee () {
+  ssh root@bumblebee
+}
+
+function sentinel () {
+  ssh root@sentinel
+}
+
+function megatron () {
+  ssh root@megatron
+}
+
+function galvatron () {
+  ssh root@galvatron
+}
+
+function fallen () {
+  ssh root@fallen
+}
+
+function cerebros () {
+  ssh root@cerebros
+}
+
+function k8start () {
+  virsh start cerebros
+  virsh start optimus
+  virsh start prime
+  virsh start bumblebee
+  virsh start megatron
+  virsh start galvatron
+  virsh start fallen
+}
+
+function k8stop () {
+  virsh shutdown cerebros
+  virsh shutdown optimus
+  virsh shutdown prime
+  virsh shutdown bumblebee
+  virsh shutdown megatron
+  virsh shutdown galvatron
+  virsh shutdown fallen
+}
+
+function au () {
+  az logout --user $1
+}
+
+function ag () {
+  az account show --query "{Tenant:tenantId, Subscription:name, User:user.name}" -o table
+}
+
+function agf () {
+  az account show
+}
+
+function al () {
+  az account list
+}
+
+function as () {
+  az account set --subscription $1
+}
+
+function atr () {
+ az login --tenant realhandsonlabs.com
+}
+
+function at () {
+ az login --tenant $1
+}
+
+function at1 () {
+ az login --tenant 25fd212e-328f-4f84-b48f-d764c79bc312
+}
+
+function at2 () {
+ az login --tenant 939781d7-7aaf-4d10-9d73-0b6111376b7b
+}
+
+function win () {
+   nohup xfreerdp /u:marcelo /p:'2w3e4r!Q@W#E' /v:192.168.122.155 /monitors:3 /size:1240x1080 /cert-ignore \
+   /drive:home,/home/marcelo \
+   /drive:ssd_win,/data/ssd_win \
+   /drive:ssd_seg,/data/ssd_seg \
+   /drive:ssd_main,/data/ssd_main \
+   /drive:hd,/data/hd &
+}
+
+function winhome () {
+   nohup xfreerdp /u:marcelo /p:'Acd$31-rds' /v:192.168.1.99 /f /monitors:2 /cert-ignore \
+   /drive:home,/home/marcelo \
+   /drive:ssd_win,/data/ssd_win \
+   /drive:ssd_seg,/data/ssd_seg \
+   /drive:ssd_main,/data/ssd_main \
+   /drive:hd,/data/hd &
+}
+
+function winf () {
+ nohup xfreerdp /u:marcelo /p:'2w3e4r!Q@W#E' /v:192.168.122.155 /f /monitors:3 /cert-ignore \
+   /drive:home,/home/marcelo \
+   /drive:ssd_win,/data/ssd_win \
+   /drive:ssd_seg,/data/ssd_seg \
+   /drive:ssd_main,/data/ssd_main \
+   /drive:ssd_main,/data/hd  &
+}
+
+function wink () {
+ killall xfreerdp
+}
+
+function winstart () {
+  virsh start win11
+}
+
+function winstop () {
+  virsh shutdown win11
+}
+
+function publickey () {
+  cat ~/.ssh/id_ed25519.pub | xclip -selection clipboard
+}
+
+function fixit () {
+  killall cairo-dock
+  rm /home/marcelo/.config/cairo-dock -r
+  cp /home/marcelo/.config/cairo-dock.old /home/marcelo/.config/cairo-dock -r
+  nohup cairo-dock &
+}

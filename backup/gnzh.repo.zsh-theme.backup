@@ -1,0 +1,170 @@
+setopt prompt_subst
+
+# Remover símbolo do kube_ps1
+export KUBE_PS1_SYMBOL_ENABLE=false
+
+# Desativa o kube_ps1 globalmente no início da sessão
+kubeoff --global
+
+autoload -Uz add-zsh-hook
+
+# --------------------------------------------------
+# Azure usage tracking (theme-only)
+# --------------------------------------------------
+_azure_last_used() {
+  local cache="/tmp/zsh-azure-${UID}-${PPID}"
+  local cloud_cache="/tmp/zsh-cloud-${UID}-${PPID}"
+
+  if [[ "$1" == az* ]]; then
+    echo "$EPOCHSECONDS" >| "$cache"
+    rm -f "$cloud_cache"
+  fi
+
+  # Invalida cache cloud ao usar comandos AWS (login/sso/config/account)
+  if [[ "$1" == aws* ]]; then
+    rm -f "$cloud_cache"
+  fi
+}
+
+add-zsh-hook preexec _azure_last_used
+
+# --------------------------------------------------
+# Detect active cloud provider
+# --------------------------------------------------
+detect_cloud_provider() {
+  local cloud_cache="/tmp/zsh-cloud-${UID}-${PPID}"
+  local now=$EPOCHSECONDS
+
+  # Cache curto para evitar chamadas lentas a cada Enter
+  if [[ -f "$cloud_cache" ]]; then
+    local ts cached
+    ts=$(sed -n '1p' "$cloud_cache" 2>/dev/null)
+    cached=$(sed -n '2p' "$cloud_cache" 2>/dev/null)
+    if [[ "$ts" == <-> ]] && (( now - ts < 20 )); then
+      echo "$cached"
+      return
+    fi
+  fi
+
+  local clouds=""
+
+  # Azure — uso recente neste shell
+  local az_cache="/tmp/zsh-azure-${UID}-${PPID}"
+
+  if [[ -f "$az_cache" ]]; then
+    local last_used now
+    last_used=$(<"$az_cache")
+    now=$EPOCHSECONDS
+
+    if (( now - last_used < 600 )); then
+      local sub
+      sub=$(az account show --query name -o tsv 2>/dev/null)
+      if [[ -n "$sub" ]]; then
+        clouds+="%F{33}AZ:%F{75}${sub}%f"
+      fi
+    fi
+  fi
+
+  # AWS
+  local aws_label=""
+  if [[ -n "$AWS_PROFILE" ]] || [[ -n "$AWS_ACCESS_KEY_ID" ]] || [[ -n "$AWS_SESSION_TOKEN" ]]; then
+    aws_label="${AWS_PROFILE:-default}"
+  else
+    local aws_account
+    aws_account=$(aws sts get-caller-identity --query Account --output text --no-cli-pager 2>/dev/null)
+    [[ -n "$aws_account" ]] && aws_label="$aws_account"
+  fi
+
+  if [[ -n "$aws_label" ]]; then
+    if [[ -n "$clouds" ]]; then
+      clouds+="/"
+    fi
+    clouds+="%F{208}AWS:${aws_label}%f"
+  fi
+
+  # OCI
+  if grep -q "key_file" "$HOME/.oci/config" &> /dev/null; then
+    local region
+    region=$(awk -F'=' '/^region/{gsub(/ /,"",$2); print $2; exit}' "$HOME/.oci/config")
+    if [[ -n "$region" ]]; then
+      if [[ -n "$clouds" ]]; then
+        clouds+="/"
+      fi
+      clouds+="%F{203}OCI:${region}%f"
+    fi
+  fi
+
+  {
+    echo "$now"
+    echo "$clouds"
+  } >| "$cloud_cache"
+
+  echo "$clouds"
+
+}
+
+# --------------------------------------------------
+# Git prompt
+# --------------------------------------------------
+git_prompt_info() {
+  local repo branch top
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || return
+  repo=${top##*/}
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+  [[ -z "$branch" ]] && branch="detached"
+
+  if [[ -n $(git status --porcelain --untracked-files=no 2>/dev/null) ]]; then
+    echo "%F{227}${repo}:${branch}%f"
+  else
+    echo "%F{114}${repo}:${branch}%f"
+  fi
+}
+
+_git_segment() {
+  local info
+  info=$(git_prompt_info)
+  [[ -n "$info" ]] && echo "[${info}]"
+}
+
+_cloud_segment() {
+  local info
+  info=$(detect_cloud_provider)
+  [[ -n "$info" ]] && echo "[${info}]"
+}
+
+# --------------------------------------------------
+# Execution time in RPROMPT (commands > 2s)
+# --------------------------------------------------
+_prompt_timer_preexec() {
+  _prompt_timer=$EPOCHSECONDS
+}
+
+_prompt_timer_precmd() {
+  if [[ -n "$_prompt_timer" ]]; then
+    local elapsed=$(( EPOCHSECONDS - _prompt_timer ))
+    unset _prompt_timer
+    if (( elapsed > 2 )); then
+      RPROMPT="%F{244}${elapsed}s%f"
+      return
+    fi
+  fi
+  RPROMPT=""
+}
+
+add-zsh-hook preexec _prompt_timer_preexec
+add-zsh-hook precmd _prompt_timer_precmd
+
+# --------------------------------------------------
+# Prompt
+# --------------------------------------------------
+() {
+  local current_dir="%F{81}%~%f"
+
+  PROMPT="╭─${current_dir}\$(_git_segment)\$(_cloud_segment)
+╰─> "
+
+  RPROMPT=""
+
+  ZSH_THEME_RUBY_PROMPT_PREFIX="%F{203} ‹"
+  ZSH_THEME_RUBY_PROMPT_SUFFIX="›%f"
+}
